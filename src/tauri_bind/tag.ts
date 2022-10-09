@@ -1,37 +1,39 @@
-import {message} from "@tauri-apps/api/dialog";
 import {invoke} from "@tauri-apps/api";
 import {TodoItem} from "./todoItem";
 import IdIsUndefinedError from "./IdIsUndefinedError";
 
-class Tag {
-    id?: number
+export interface TagInterface {
+    id?: number,
     value: string
+}
+
+export class Tag {
+    private id?: number
+    private readonly value: string
 
     constructor(value: string, id?: number,) {
         this.id = id;
         this.value = value;
     }
 
-    public static onError: (e: any) => Promise<void> = async (e) => {
-        await message(`${e}`, {
-            title: 'Handling \`Tag\` Failure', type: 'error'
-        });
-    };
-
-    public static async get_tag_id(tagName: string): Promise<Tag> {
+    public static async fetch(tagName: string): Promise<Tag> {
         return await invoke<number>("get_tag_id", {tagName: tagName})
             .then((id) => {
                 return new Tag(tagName, id)
             })
     }
 
-    public static async fetch_all(): Promise<Tag[]> {
+    public static async fetchAll(): Promise<Tag[]> {
         return await invoke<[number, string][]>("fetch_all_tags",)
             .then((list) => {
                 return list.map(([id, value]) => {
                     return new Tag(value, id)
                 })
             });
+    }
+
+    public getInner(): TagInterface {
+        return {id: this.id, value: this.value}
     }
 
     public setId(id: number) {
@@ -67,23 +69,28 @@ class Tag {
 
     }
 
-    public async fetch_all_tag_todo_item(): Promise<TodoItem[]> {
-        return await this.on_id_ok((id) => {
+    public async fetchAllRelateTodoItem(): Promise<TodoItem[]> {
+        return await this.whenIdValid((id) => {
             return invoke<[number, TodoItem][]>("fetch_all_tag_todo_item", {tagId: id})
                 .then((list) => {
                     return list.map(([id, item]) => {
-                        return TodoItem.with_id(id, item)
+                        return TodoItem.withId(id, item)
                     })
                 })
         })
 
     }
+    // Warning: call this function should consume this object
+    public async removeThis() {
+        await invoke("delete_tag", {tagName: this.value});
+        this.id = undefined
+    }
 
-    async on_id_ok<T>(handle: (id: number) => Promise<T>): Promise<T> {
+
+    private async whenIdValid<T>(handle: (id: number) => Promise<T>): Promise<T> {
         if (this.id != undefined) {
             return await handle(this.id)
         } else {
-            await Tag.onError("The Id of Tag is Undefined")
             throw new IdIsUndefinedError("Tag")
         }
     }
@@ -91,4 +98,3 @@ class Tag {
 
 }
 
-export default Tag;
