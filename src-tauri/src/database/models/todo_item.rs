@@ -1,9 +1,7 @@
-use std::mem::transmute;
-
-use sea_query::{ColumnDef, Condition, Expr, Iden, Query, SimpleExpr, SqliteQueryBuilder, Table};
+use sea_query::{ColumnDef, Expr, Iden, Query, SqliteQueryBuilder, Table};
 use sea_query_binder::SqlxBinder;
-use sqlx::{query, query_as_with, query_with, Decode, FromRow, Sqlite, SqlitePool};
-use tap::{Conv, Pipe, Tap};
+use sqlx::{query, query_as_with, query_with, FromRow, SqlitePool};
+use tap::{Conv, Pipe};
 
 use crate::database::priority::Priority;
 
@@ -90,17 +88,17 @@ impl TodoItemEntity {
         query_as_with(&stet, values).fetch_all(pool).await
     }
 
-    pub async fn find_by_id(
+    pub async fn find_all_by_id(
         pool: &SqlitePool,
-        id: i32,
-    ) -> Result<Option<TodoItemModel>, sqlx::Error> {
+        ids: impl IntoIterator<Item = i32>,
+    ) -> Result<Vec<TodoItemModel>, sqlx::Error> {
         let (stet, values) = Query::select()
             .columns(TodoItem::get_columns())
             .from(TodoItem::get_table())
-            .and_where(TodoItem::Id.into_col_expr().eq(id))
+            .and_where(TodoItem::Id.into_col_expr().is_in(ids))
             .build_sqlx(SqliteQueryBuilder);
 
-        query_as_with(&stet, values).fetch_optional(pool).await
+        query_as_with(&stet, values).fetch_all(pool).await
     }
 
     pub async fn save(
@@ -180,7 +178,6 @@ impl TodoItemEntity {
 
 #[cfg(test)]
 mod test_todo_item {
-    use std::process::id;
 
     use sqlx::SqlitePool;
 
@@ -192,7 +189,10 @@ mod test_todo_item {
     use super::{TodoItemEntity, TodoItemModel};
 
     async fn get_model(pool: &SqlitePool, id: i32) -> TodoItemModel {
-        let model = TodoItemEntity::find_by_id(pool, id).await.unwrap().unwrap();
+        let model = TodoItemEntity::find_all_by_id(pool, [id])
+            .await
+            .unwrap()
+            .remove(0);
 
         dbg!(model)
     }
@@ -217,7 +217,7 @@ mod test_todo_item {
             }
         );
     }
-    
+
     #[tokio::test]
     async fn test_rev() {
         init().await;

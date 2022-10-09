@@ -79,18 +79,7 @@ impl TagEntity {
 
         query_as_with(&sql, values).fetch_all(pool).await
     }
-    pub async fn find_by_id(pool: &SqlitePool, id: i32) -> Result<String, sqlx::Error> {
-        let (sql, values) = Query::select()
-            .column(Tag::Value)
-            .from(Tag::Table)
-            .and_where(Expr::col(Tag::Id).eq(id))
-            .build_sqlx(SqliteQueryBuilder);
 
-        query_as_with(&sql, values)
-            .fetch_one(pool)
-            .await
-            .map(|(s,)| s)
-    }
     pub async fn remove(pool: &SqlitePool, tag: &impl AsRef<str>) -> Result<(), sqlx::Error> {
         let (sql, values) = Query::delete()
             .from_table(Tag::Table)
@@ -156,7 +145,6 @@ mod test_tag {
     use crate::database::models::test_sqlite::{init, SQLITE};
 
     use super::{TagEntity, TagModel};
-
 
     #[tokio::test]
     async fn test_insert() {

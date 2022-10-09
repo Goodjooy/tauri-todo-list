@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 
-use futures::future::ok;
 use futures::StreamExt;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tap::Pipe;
+use tap::Tap;
+use tauri::command;
 use tauri::State;
 
+use crate::database::models::tag_item_bind::BindEntity;
+use crate::database::models::tag_item_bind::BindModel;
 use crate::database::models::tags::TagEntity;
 use crate::database::models::tags::TagModel;
 use crate::database::models::todo_item::TodoItemEntity;
@@ -34,7 +37,7 @@ pub enum PriorityLevel {
 pub type Tag = String;
 
 // TODO Item operates
-#[tauri::command]
+#[command]
 pub async fn save_full_todo_item(
     pool: State<'_, SqlitePool>,
     TodoItem {
@@ -57,12 +60,20 @@ pub async fn save_full_todo_item(
         .await
         .err_to_str()?;
     // bind tags with items
-
+    BindEntity::save_all(
+        &pool,
+        ids.into_iter()
+            .map(|tag_id| BindModel::new(tag_id, todo_item_id)),
+    )
+    .await
+    .err_to_str()?;
     // return the id of this todo item
-    todo!()
+    Ok(todo_item_id)
 }
-#[tauri::command]
-pub async fn fetch_all_todo_item(pool: State<'_, SqlitePool>) -> Result<(i32, TodoItem), String> {
+#[command]
+pub async fn fetch_all_todo_item(
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<(i32, TodoItem)>, String> {
     // fetch all tags
     let all_tags = TagEntity::fetch_all(&pool, None)
         .await
@@ -71,7 +82,19 @@ pub async fn fetch_all_todo_item(pool: State<'_, SqlitePool>) -> Result<(i32, To
         .map(|TagModel { id, value }| (id, value))
         .collect::<HashMap<_, _>>();
     // fetch all tags-item bind;
-
+    let mut all_binds = BindEntity::fetch_all(&pool)
+        .await
+        .err_to_str()?
+        .into_iter()
+        .fold(
+            HashMap::<i32, Vec<i32>>::new(),
+            |mut map, BindModel { tag_id, item_id }| {
+                map.entry(item_id)
+                    .and_modify(|v| v.push(tag_id))
+                    .or_insert(vec![tag_id]);
+                map
+            },
+        );
     // fetch all todo items with its id
     let all_todo_items = TodoItemEntity::fetch_all(&pool, None)
         .await
@@ -95,12 +118,24 @@ pub async fn fetch_all_todo_item(pool: State<'_, SqlitePool>) -> Result<(i32, To
                 )
             },
         )
+        .map(|item| {
+            item.tap_mut(|(item_id, item)| {
+                if let Some(vec) = all_binds.remove(&item_id) {
+                    item.tags.extend(
+                        vec.into_iter()
+                            .filter_map(|tag_id| all_tags.get(&tag_id))
+                            .cloned(),
+                    )
+                }
+            })
+        })
         .collect::<Vec<_>>();
     // bind the tags and todo items
 
-    todo!()
+    Ok(all_todo_items)
 }
-#[tauri::command]
+
+#[command]
 pub async fn edit_message(
     pool: State<'_, SqlitePool>,
     item_id: i32,
@@ -111,7 +146,8 @@ pub async fn edit_message(
         .await
         .err_to_str()
 }
-#[tauri::command]
+
+#[command]
 pub async fn edit_priority(
     pool: State<'_, SqlitePool>,
     item_id: i32,
@@ -122,7 +158,8 @@ pub async fn edit_priority(
         .await
         .err_to_str()
 }
-#[tauri::command]
+
+#[command]
 pub async fn state_revert(pool: State<'_, SqlitePool>, item_id: i32) -> Result<(), String> {
     // update done
     TodoItemEntity::revert_done(&pool, item_id)
@@ -134,40 +171,47 @@ pub enum EditMode {
     Add,
     Remove,
 }
-#[tauri::command]
+#[command]
 pub async fn edit_tag(
     pool: State<'_, SqlitePool>,
     item_id: i32,
     mode: EditMode,
     tag_name: Tag,
 ) -> Result<i32, String> {
+    let tag_id = TagEntity::new(&pool, &tag_name).await.err_to_str()?;
+
     match mode {
         // adding tag , create tag first then bind to the todo item
-        EditMode::Add => todo!(),
+        EditMode::Add => BindEntity::save_all(&pool, [BindModel::new(tag_id, item_id)])
+            .await
+            .err_to_str(),
         // remove tag , remove the bind between the tag and todo item
-        EditMode::Remove => todo!(),
+        EditMode::Remove => BindEntity::remove(&pool, tag_id, item_id)
+            .await
+            .err_to_str(),
     }
+    .map(|_| tag_id)
 }
-#[tauri::command]
+
+#[command]
 pub async fn clean_tag(pool: State<'_, SqlitePool>, item_id: i32) -> Result<(), String> {
     // remove all bind on todo item
-    todo!()
+    BindEntity::remove_bind_item_id(&pool, item_id)
+        .await
+        .err_to_str()
 }
-#[tauri::command]
-pub async fn delete_todo_item(
-    pool: State<'_, SqlitePool>,
-    item_id: i32,
-) -> Result<TodoItem, String> {
-    // remove tag-time bind
-    
+#[command]
+pub async fn delete_todo_item(pool: State<'_, SqlitePool>, item_id: i32) -> Result<(), String> {
+    // remove tag-item bind
+    clean_tag(pool.clone(), item_id).await?;
     // remove item
-    TodoItemEntity::remove(&pool,item_id).await.err_to_str()?;
+    TodoItemEntity::remove(&pool, item_id).await.err_to_str()?;
 
-    todo!()
+    Ok(())
 }
 
 // tag Operate
-#[tauri::command]
+#[command]
 pub async fn fetch_all_tags(pool: State<'_, SqlitePool>) -> Result<Vec<(i32, String)>, String> {
     // get all tags,group with tag id and value
     TagEntity::fetch_all(&pool, None)
@@ -179,14 +223,49 @@ pub async fn fetch_all_tags(pool: State<'_, SqlitePool>) -> Result<Vec<(i32, Str
         })
         .err_to_str()
 }
-#[tauri::command]
+#[command]
 pub async fn fetch_all_tag_todo_item(
     pool: State<'_, SqlitePool>,
     tag_id: i32,
-) -> Result<(i32, TodoItem), String> {
-    todo!()
+) -> Result<Vec<(i32, TodoItem)>, String> {
+    let item_ids = BindEntity::fetch_all_tag_id(&pool, tag_id)
+        .await
+        .err_to_str()?;
+
+    let mut resp = Vec::new();
+    for TodoItemModel {
+        id,
+        message,
+        priority,
+        done,
+    } in TodoItemEntity::find_all_by_id(&pool, item_ids)
+        .await
+        .err_to_str()?
+    {
+        resp.push((
+            id,
+            TodoItem {
+                message,
+                priority: priority.into(),
+                done,
+                tags: TagEntity::find_all_by_id(
+                    &pool,
+                    BindEntity::fetch_all_item_id(&pool, id)
+                        .await
+                        .err_to_str()?,
+                )
+                .await
+                .err_to_str()?
+                .into_iter()
+                .map(|TagModel { value, .. }| value)
+                .collect(),
+            },
+        ))
+    }
+
+    Ok(resp)
 }
-#[tauri::command]
+#[command]
 pub async fn rename_tag(
     pool: State<'_, SqlitePool>,
     tag_id: i32,
@@ -194,18 +273,21 @@ pub async fn rename_tag(
 ) -> Result<(), String> {
     TagEntity::edit(&pool, tag_id, &tag_name).await.err_to_str()
 }
-#[tauri::command]
+#[command]
 pub async fn create_tag(pool: State<'_, SqlitePool>, tag_name: Tag) -> Result<i32, String> {
     TagEntity::new(&pool, &tag_name).await.err_to_str()
 }
-#[tauri::command]
+#[command]
 pub async fn get_tag_id(pool: State<'_, SqlitePool>, tag_name: Tag) -> Result<i32, String> {
     TagEntity::get_id(&pool, &tag_name).await.err_to_str()
 }
-#[tauri::command]
+#[command]
 pub async fn delete_tag(pool: State<'_, SqlitePool>, tag_name: Tag) -> Result<(), String> {
-    // todo!("remove bind with todo Item");
+    let tag_id = TagEntity::get_id(&pool, &tag_name).await.err_to_str()?;
 
+    BindEntity::remove_bind_tag_id(&pool, tag_id)
+        .await
+        .err_to_str()?;
     // remove this
     TagEntity::remove(&pool, &tag_name).await.err_to_str()?;
 
