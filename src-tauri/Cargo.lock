@@ -3441,6 +3441,7 @@ dependencies = [
  "tap",
  "tauri",
  "tauri-build",
+ "thiserror",
  "tokio",
 ]
 

@@ -25,6 +25,7 @@ tokio = { version = "1.21.2", features = ["full"] }
 sea-query-binder = { version = "0.1.0", features = ["with-chrono", "sqlx-sqlite"] }
 once_cell = "1.15.0"
 futures = "0.3.24"
+thiserror = "1.0.37"
 
 [features]
 # by default Tauri runs in production mode

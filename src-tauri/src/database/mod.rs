@@ -1,5 +1,6 @@
+pub mod priority;
 use sea_query::Iden;
-use sqlx::{sqlite::SqlitePoolOptions, FromRow, SqlitePool};
+use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 
 use self::models::tags::TagEntity;
 
@@ -21,14 +22,3 @@ pub async fn init_sqlite() -> SqlitePool {
 
 #[derive(Debug, Iden)]
 pub struct Count;
-
-#[derive(Debug, FromRow)]
-pub struct CountModel {
-    count: i64,
-}
-
-impl CountModel {
-    pub fn is_empty(&self) -> bool {
-        self.count == 0
-    }
-}

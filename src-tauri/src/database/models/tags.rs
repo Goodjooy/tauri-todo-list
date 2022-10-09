@@ -152,28 +152,11 @@ impl TagEntity {
 
 #[cfg(test)]
 mod test_tag {
-    use once_cell::sync::OnceCell;
-    use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+
+    use crate::database::models::test_sqlite::{init, SQLITE};
 
     use super::{TagEntity, TagModel};
 
-    static SQLITE: OnceCell<SqlitePool> = OnceCell::new();
-
-    async fn init() {
-        if SQLITE.get().is_none() {
-            let pool = SqlitePoolOptions::new()
-                .connect(
-                    r#"sqlite://M:/rust_project/tarui/TodoList/src-tauri/test.sqlite?mode=rwc"#,
-                )
-                .await
-                .expect("start sqlite failure");
-
-            TagEntity::create_table(&pool)
-                .await
-                .expect("create table failure");
-            SQLITE.set(pool).expect("Unreachable");
-        }
-    }
 
     #[tokio::test]
     async fn test_insert() {
