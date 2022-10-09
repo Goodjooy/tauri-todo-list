@@ -110,7 +110,7 @@ impl TagEntity {
         query_with(&sql, values).execute(pool).await.map(|_| ())
     }
 
-    pub async fn new(pool: &SqlitePool, tag: impl AsRef<str>) -> Result<i32, sqlx::Error> {
+    pub async fn save(pool: &SqlitePool, tag: impl AsRef<str>) -> Result<i32, sqlx::Error> {
         // search is the tag exist
         let (query, values) = Self::query_by_tag(&tag);
 
@@ -154,7 +154,7 @@ mod test_tag {
             value: "abccc".to_string(),
         };
 
-        let v = TagEntity::new(SQLITE.get().unwrap(), &data.value)
+        let v = TagEntity::save(SQLITE.get().unwrap(), &data.value)
             .await
             .expect("Failure save data");
 

@@ -31,27 +31,27 @@ impl TryFrom<u8> for Priority {
     }
 }
 
-impl Into<u8> for Priority {
-    fn into(self) -> u8 {
-        self as u8
+impl From<Priority> for u8 {
+    fn from(val: Priority) -> Self {
+        val as u8
     }
 }
 
-impl Into<sea_query::Value> for Priority {
-    fn into(self) -> sea_query::Value {
-        u8::into(self.into())
+impl From<Priority> for sea_query::Value {
+    fn from(val: Priority) -> Self {
+        u8::into(val.into())
     }
 }
 
-impl Into<u8> for &Priority {
-    fn into(self) -> u8 {
-        (*self) as u8
+impl From<&Priority> for u8 {
+    fn from(val: &Priority) -> Self {
+        (*val) as u8
     }
 }
 
-impl Into<PriorityLevel> for Priority {
-    fn into(self) -> PriorityLevel {
-        match self {
+impl From<Priority> for PriorityLevel {
+    fn from(val: Priority) -> Self {
+        match val {
             Priority::VeryHigh => PriorityLevel::VeryHigh,
             Priority::High => PriorityLevel::High,
             Priority::Medium => PriorityLevel::Medium,

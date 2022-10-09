@@ -50,7 +50,7 @@ pub async fn save_full_todo_item(
     // save tags
     let ids = tags
         .pipe(futures::stream::iter)
-        .then(|tag| TagEntity::new(&pool, tag))
+        .then(|tag| TagEntity::save(&pool, tag))
         .try_collect::<Vec<_>>()
         .await
         .err_to_str()?;
@@ -91,7 +91,7 @@ pub async fn fetch_all_todo_item(
             |mut map, BindModel { tag_id, item_id }| {
                 map.entry(item_id)
                     .and_modify(|v| v.push(tag_id))
-                    .or_insert(vec![tag_id]);
+                    .or_insert_with(|| vec![tag_id]);
                 map
             },
         );
@@ -120,7 +120,7 @@ pub async fn fetch_all_todo_item(
         )
         .map(|item| {
             item.tap_mut(|(item_id, item)| {
-                if let Some(vec) = all_binds.remove(&item_id) {
+                if let Some(vec) = all_binds.remove(item_id) {
                     item.tags.extend(
                         vec.into_iter()
                             .filter_map(|tag_id| all_tags.get(&tag_id))
@@ -178,7 +178,7 @@ pub async fn edit_tag(
     mode: EditMode,
     tag_name: Tag,
 ) -> Result<i32, String> {
-    let tag_id = TagEntity::new(&pool, &tag_name).await.err_to_str()?;
+    let tag_id = TagEntity::save(&pool, &tag_name).await.err_to_str()?;
 
     match mode {
         // adding tag , create tag first then bind to the todo item
@@ -275,7 +275,7 @@ pub async fn rename_tag(
 }
 #[command]
 pub async fn create_tag(pool: State<'_, SqlitePool>, tag_name: Tag) -> Result<i32, String> {
-    TagEntity::new(&pool, &tag_name).await.err_to_str()
+    TagEntity::save(&pool, &tag_name).await.err_to_str()
 }
 #[command]
 pub async fn get_tag_id(pool: State<'_, SqlitePool>, tag_name: Tag) -> Result<i32, String> {
