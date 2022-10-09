@@ -1,6 +1,7 @@
 import {message} from "@tauri-apps/api/dialog";
 import {invoke} from "@tauri-apps/api";
 import {TodoItem} from "./todoItem";
+import IdIsUndefinedError from "./IdIsUndefinedError";
 
 class Tag {
     id?: number
@@ -11,17 +12,16 @@ class Tag {
         this.value = value;
     }
 
-    public static on_error: (e: any) => Promise<void> = async (e) => {
+    public static onError: (e: any) => Promise<void> = async (e) => {
         await message(`${e}`, {
-            title: 'Handling \`Tag\` Failure',
-            type: 'error'
+            title: 'Handling \`Tag\` Failure', type: 'error'
         });
     };
 
-    public static async get_tag_id(tag_name:string):Promise<Tag>{
-        return await invoke<number>("get_tag_id")
+    public static async get_tag_id(tagName: string): Promise<Tag> {
+        return await invoke<number>("get_tag_id", {tagName: tagName})
             .then((id) => {
-                return new Tag(tag_name, id)
+                return new Tag(tagName, id)
             })
     }
 
@@ -34,42 +34,57 @@ class Tag {
             });
     }
 
+    public setId(id: number) {
+        if (this.id == undefined) {
+            this.id = id
+        }
+    }
+
+    public getValue(): string {
+        return this.value
+    }
+
+    public checkEquals(rhs: Tag): boolean {
+        return this.value == rhs.value
+    }
+
+    public checkNonEquals(rhs: Tag): boolean {
+        return !this.checkEquals(rhs)
+    }
+
     public async create(): Promise<void> {
-        await invoke<number>("create_tag", {tag_name: this.value})
+        await invoke<number>("create_tag", {tagName: this.value})
             .then((id) => {
                 this.id = id
             })
     }
 
     public async rename(name: string): Promise<void> {
-        return await this.on_id_ok((id) => {
-            return invoke<void>("rename_tag", {tag_id: id, tag_name: name})
-                .then(() => {
-                    self.name = name
-                })
+        if (this.id != undefined) {
+            await invoke<void>("rename_tag", {tagId: this.id, tagName: name})
+        }
+        self.name = name
 
-        }, () => {
-        })
     }
 
     public async fetch_all_tag_todo_item(): Promise<TodoItem[]> {
         return await this.on_id_ok((id) => {
-            return invoke<[number, TodoItem][]>("fetch_all_tag_todo_item", {tag_id: id})
+            return invoke<[number, TodoItem][]>("fetch_all_tag_todo_item", {tagId: id})
                 .then((list) => {
                     return list.map(([id, item]) => {
                         return TodoItem.with_id(id, item)
                     })
                 })
-        }, () => [])
+        })
 
     }
 
-    async on_id_ok<T>(handle: (id: number) => Promise<T>, default_data: () => T): Promise<T> {
+    async on_id_ok<T>(handle: (id: number) => Promise<T>): Promise<T> {
         if (this.id != undefined) {
             return await handle(this.id)
         } else {
-            await Tag.on_error("The Id of Tag is Undefined")
-            return default_data()
+            await Tag.onError("The Id of Tag is Undefined")
+            throw new IdIsUndefinedError("Tag")
         }
     }
 

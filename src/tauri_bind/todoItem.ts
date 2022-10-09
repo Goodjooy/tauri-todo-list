@@ -1,11 +1,6 @@
 import Tag from "./tag";
-import {it} from "node:test";
 import {invoke} from "@tauri-apps/api";
 
-enum TagOpsMode {
-    Add = "Add",
-    Remove = " Remove"
-}
 
 class TodoItem {
     id?: number
@@ -41,35 +36,35 @@ class TodoItem {
     }
 
     public async save(): Promise<void> {
-        await invoke<number>("save_full_todo_item", {todo_item: this})
+        await invoke<number>("save_full_todo_item", {TodoItem: this})
             .then((id) => {
                 this.id = id
             })
     }
 
     public async edit_message(msg: string): Promise<void> {
-        // fixme: this.id maybe a `undefined`
-        await invoke<void>("edit_message", {item_id: this.id, new_message: msg})
-            .then((_) => {
-                this.message = msg
-            })
+        if (this.id != undefined) {
+            await invoke<void>("edit_message", {itemId: this.id, newMessage: msg})
+        }
+        this.message = msg
     }
 
     public async edit_priority(priority: Priority): Promise<void> {
-        // fixme: this.id maybe a `undefined`
-        await invoke<void>("edit_priority", {item_id: this.id, priority: priority})
-            .then((_) => {
-                this.priority = priority
-            })
+        if (this.id != undefined) {
+            await invoke<void>("edit_priority", {itemId: this.id, priority: priority})
+        }
+        this.priority = priority
     }
 
     public async revert_state(): Promise<void> {
-        // fixme: this.id maybe a `undefined`
-        await invoke<void>("state_revert", {item_id: this.id})
-            .then((_) => this.done = !this.done)
+        if (this.id != undefined) {
+
+            await invoke<void>("state_revert", {itemId: this.id})
+        }
+        this.done = !this.done
     }
 
-    public async add_tag(tag: Tag | string) {
+    public async editTag(tag: Tag | string, mode: TagOpsMode) {
         let tagObj: Tag;
         if (tag instanceof Tag) {
             tagObj = tag
@@ -77,43 +72,27 @@ class TodoItem {
             tagObj = new Tag(tag)
         }
 
-        // not save self, save tag first
-        if (this.id == undefined) {
-            if (tagObj.id != undefined) {
-                await tagObj.create()
-            }
-        } else {
-            await invoke<number>("edit_tag",
-                {item_id: this.id, mode: TagOpsMode.Add, tag_name: tagObj.value})
-                .then((id) => {
-                    if (tagObj.id == undefined) {
-                        tagObj.id = id
-                    }
-                });
-        }
-        // push
-        this.tags.push(tagObj)
-
-    }
-
-    public async remove_tag(target: Tag) {
-        // self id is undefined , just remove
-        if (this.id == undefined) {
-            // do nothing
-        } else {
-            //remove first
-            await invoke<number>("edit_tag",
-                {item_id: this.id, mode: TagOpsMode.Remove, tag_name: target.value})
-            //
-        }
-        this.tags = this.tags.filter((tag) => {
-            return tag.value != target.value
-        })
-    }
-
-    public async clean_tags() {
         if (this.id != undefined) {
-            await invoke<void>("clean_tag", {item_id: this.id})
+            await invoke<number>("edit_tag",
+                {
+                    itemId: this.id,
+                    mode: mode,
+                    tagName: tagObj.getValue()
+                }
+            ).then(tagObj.setId);
+        }
+        // add or remove
+        if (mode == TagOpsMode.Add) {
+            this.tags.push(tagObj)
+        } else {
+            this.tags = this.tags.filter(tagObj.checkNonEquals)
+        }
+
+    }
+
+    public async cleanTags() {
+        if (this.id != undefined) {
+            await invoke<void>("clean_tag", {itemId: this.id})
         }
 
         this.tags = this.tags.filter(() => {
@@ -124,10 +103,15 @@ class TodoItem {
 
 enum Priority {
     VeryHigh = "VeryHigh",
-    High = "High,",
-    Medium = "Medium,",
-    Low = "Low,",
-    VeryLow = "VeryLow,",
+    High = "High",
+    Medium = "Medium",
+    Low = "Low",
+    VeryLow = "VeryLow",
 }
 
-export {TodoItem, Priority}
+enum TagOpsMode {
+    Add = "Add",
+    Remove = " Remove"
+}
+
+export {TodoItem, Priority, TagOpsMode}
